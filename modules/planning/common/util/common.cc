@@ -61,9 +61,12 @@ int BuildStopDecision(const std::string& stop_wall_id, const double stop_line_s,
       reference_line.GetReferencePoint(stop_s).heading();
 
   ObjectDecisionType stop;
+  //定义一个停止墙
   auto* stop_decision = stop.mutable_stop();
+  // stop决策的停车原因
   stop_decision->set_reason_code(stop_reason_code);
   stop_decision->set_distance_s(-stop_distance);
+  // stop决策的停车安全距离
   stop_decision->set_stop_heading(stop_heading);
   stop_decision->mutable_stop_point()->set_x(stop_point.x());
   stop_decision->mutable_stop_point()->set_y(stop_point.y());

@@ -70,7 +70,7 @@ config: {
   rule_id: TRAFFIC_LIGHT
   enabled: true
   traffic_light {
-    stop_distance: 1.0
+    stop_distance: 1.0  #停止距离为1.0 单位m
     max_stop_deceleration: 4.0
   }
 }
