@@ -57,25 +57,31 @@ std::string GetLogFileName() {
   return std::string(name_buffer);
 }
 
+//保存到日志中的状态量
 void WriteHeaders(std::ofstream &file_stream) {
-  file_stream << "current_lateral_error,"
-              << "current_ref_heading,"
-              << "current_heading,"
-              << "current_heading_error,"
-              << "heading_error_rate,"
-              << "lateral_error_rate,"
-              << "current_curvature,"
-              << "steer_angle,"
-              << "steer_angle_feedforward,"
-              << "steer_angle_lateral_contribution,"
-              << "steer_angle_lateral_rate_contribution,"
-              << "steer_angle_heading_contribution,"
-              << "steer_angle_heading_rate_contribution,"
-              << "steer_angle_feedback,"
-              << "steering_position,"
-              << "v" << std::endl;
+  file_stream << "current_lateral_error,"                  //当前横向误差
+              << "current_ref_heading,"                    //当前参考航向
+              << "current_heading,"                        //当前航向
+              << "current_heading_error,"                  //当前航向误差
+              << "heading_error_rate,"                     //航向误差变化率
+              << "lateral_error_rate,"                     //横向误差变化率
+              << "current_curvature,"                      //当前曲率
+              << "steer_angle,"                            //方向盘转角(控制的输出)
+              << "steer_angle_feedforward,"                //前馈控制计算输出
+              << "steer_angle_lateral_contribution,"       //K矩阵中横向偏差计算结果分量
+              << "steer_angle_lateral_rate_contribution,"  //K矩阵中横向偏差变化率计算结果分量
+              << "steer_angle_heading_contribution,"       //K矩阵中航向偏差计算结果分量
+              << "steer_angle_heading_rate_contribution,"  //K矩阵中航向偏差变化率计算结果分量
+              << "steer_angle_feedback,"                   //LQR计算出的方向盘控制量
+              << "steering_position,"                      //当前底盘方向盘状态(底盘的执行)
+              << "v" << std::endl;                         //车速
 }
 }  // namespace
+
+/*
+如果控制侧输出的就不行，可以调节权重，横向误差和航向误差的增大；
+检查一下K矩阵的4个分量值是不是正常，前馈输出值是不是正常。
+*/
 
 LatController::LatController() : name_("LQR-based Lateral Controller") {
   if (FLAGS_enable_csv_debug) {
@@ -89,59 +95,62 @@ LatController::LatController() : name_("LQR-based Lateral Controller") {
 
 LatController::~LatController() { CloseLogFile(); }
 
+//读取横向配置中的参数
 bool LatController::LoadControlConf(const ControlConf *control_conf) {
   if (!control_conf) {
     AERROR << "[LatController] control_conf == nullptr";
     return false;
   }
   vehicle_param_ =
-      common::VehicleConfigHelper::Instance()->GetConfig().vehicle_param();
+      common::VehicleConfigHelper::Instance()->GetConfig().vehicle_param(); //加载车辆配置参数，反序列化配置文件
 
   ts_ = control_conf->lat_controller_conf().ts();
+  //异常检查 ts代表这个模块的执行频率是多少 如果ts小于0，为无效的横向控制时间间隔，
   if (ts_ <= 0.0) {
     AERROR << "[MPCController] Invalid control update interval.";
     return false;
   }
-  cf_ = control_conf->lat_controller_conf().cf();
-  cr_ = control_conf->lat_controller_conf().cr();
+  cf_ = control_conf->lat_controller_conf().cf(); //前两轮轮胎侧扁刚度
+  cr_ = control_conf->lat_controller_conf().cr(); //后两轮轮胎侧扁刚度
   preview_window_ = control_conf->lat_controller_conf().preview_window();
+  //低速前行预瞄距离，修复不同速度下参考点的对准问题
   lookahead_station_low_speed_ =
       control_conf->lat_controller_conf().lookahead_station();
   lookback_station_low_speed_ =
-      control_conf->lat_controller_conf().lookback_station();
+      control_conf->lat_controller_conf().lookback_station(); //低速倒车预瞄距离
   lookahead_station_high_speed_ =
       control_conf->lat_controller_conf().lookahead_station_high_speed();
   lookback_station_high_speed_ =
       control_conf->lat_controller_conf().lookback_station_high_speed();
-  wheelbase_ = vehicle_param_.wheel_base();
-  steer_ratio_ = vehicle_param_.steer_ratio();
+  wheelbase_ = vehicle_param_.wheel_base();   //轴距，直接在车辆参数中取，车辆的固定参数（默认不变）
+  steer_ratio_ = vehicle_param_.steer_ratio();//转向比例，方向盘角度和车轮角度比值
   steer_single_direction_max_degree_ =
-      vehicle_param_.max_steer_angle() / M_PI * 180;
-  max_lat_acc_ = control_conf->lat_controller_conf().max_lateral_acceleration();
-  low_speed_bound_ = control_conf_->lon_controller_conf().switch_speed();
+      vehicle_param_.max_steer_angle() / M_PI * 180; //最大方向盘转角
+  max_lat_acc_ = control_conf->lat_controller_conf().max_lateral_acceleration();//最大的侧向加速度
+  low_speed_bound_ = control_conf_->lon_controller_conf().switch_speed(); //纵向配置中：低速约束值
   low_speed_window_ =
       control_conf_->lon_controller_conf().switch_speed_window();
 
-  const double mass_fl = control_conf->lat_controller_conf().mass_fl();
+  const double mass_fl = control_conf->lat_controller_conf().mass_fl(); //车辆左前质量
   const double mass_fr = control_conf->lat_controller_conf().mass_fr();
   const double mass_rl = control_conf->lat_controller_conf().mass_rl();
   const double mass_rr = control_conf->lat_controller_conf().mass_rr();
-  const double mass_front = mass_fl + mass_fr;
+  const double mass_front = mass_fl + mass_fr; //车身前悬质量
   const double mass_rear = mass_rl + mass_rr;
-  mass_ = mass_front + mass_rear;
+  mass_ = mass_front + mass_rear; //车身总质量
 
-  lf_ = wheelbase_ * (1.0 - mass_front / mass_);
-  lr_ = wheelbase_ * (1.0 - mass_rear / mass_);
+  lf_ = wheelbase_ * (1.0 - mass_front / mass_); //车辆前悬长度
+  lr_ = wheelbase_ * (1.0 - mass_rear / mass_);  //车辆后悬长度
 
   // moment of inertia
-  iz_ = lf_ * lf_ * mass_front + lr_ * lr_ * mass_rear;
+  iz_ = lf_ * lf_ * mass_front + lr_ * lr_ * mass_rear; //转动惯量
 
-  lqr_eps_ = control_conf->lat_controller_conf().eps();
-  lqr_max_iteration_ = control_conf->lat_controller_conf().max_iteration();
+  lqr_eps_ = control_conf->lat_controller_conf().eps(); //lqr优化的最小精度0.01 停止条件1
+  lqr_max_iteration_ = control_conf->lat_controller_conf().max_iteration(); //lqr最大迭代次数 停止条件2
 
-  query_relative_time_ = control_conf->query_relative_time();
+  query_relative_time_ = control_conf->query_relative_time(); //相对时间 机构延时 一般来说发出指令到底盘响应会有500ms延时
 
-  minimum_speed_protection_ = control_conf->minimum_speed_protection();
+  minimum_speed_protection_ = control_conf->minimum_speed_protection(); //最小速度
 
   return true;
 }
@@ -174,6 +183,7 @@ void LatController::LogInitParameters() {
         << " lr_: " << lr_;
 }
 
+//低通滤波器 去除高频噪声 效果同积分器
 void LatController::InitializeFilters(const ControlConf *control_conf) {
   // Low pass filter
   std::vector<double> den(3, 0.0);
@@ -181,12 +191,14 @@ void LatController::InitializeFilters(const ControlConf *control_conf) {
   common::LpfCoefficients(
       ts_, control_conf->lat_controller_conf().cutoff_freq(), &den, &num);
   digital_filter_.set_coefficients(den, num);
+  //偏差均值滤波 防止突变（导航模式用到了，正常车跑的时候没有用到）
   lateral_error_filter_ = common::MeanFilter(static_cast<std::uint_fast8_t>(
       control_conf->lat_controller_conf().mean_filter_window_size()));
   heading_error_filter_ = common::MeanFilter(static_cast<std::uint_fast8_t>(
       control_conf->lat_controller_conf().mean_filter_window_size()));
 }
 
+//控制器初始化，动力学模型初始化
 Status LatController::Init(std::shared_ptr<DependencyInjector> injector,
                            const ControlConf *control_conf) {
   control_conf_ = control_conf;
@@ -197,10 +209,10 @@ Status LatController::Init(std::shared_ptr<DependencyInjector> injector,
                   "failed to load control_conf");
   }
   // Matrix init operations.
-  const int matrix_size = basic_state_size_ + preview_window_;
-  matrix_a_ = Matrix::Zero(basic_state_size_, basic_state_size_);
-  matrix_ad_ = Matrix::Zero(basic_state_size_, basic_state_size_);
-  matrix_adc_ = Matrix::Zero(matrix_size, matrix_size);
+  const int matrix_size = basic_state_size_ + preview_window_;       //矩阵大小默认为基本状态大小 4
+  matrix_a_ = Matrix::Zero(basic_state_size_, basic_state_size_);    //矩阵A 常量
+  matrix_ad_ = Matrix::Zero(basic_state_size_, basic_state_size_);   //离散化矩阵A
+  matrix_adc_ = Matrix::Zero(matrix_size, matrix_size);              //preview=0时，matrix_adc_ == matrix_ad_
   /*
   A matrix (Gear Drive)
   [0.0, 1.0, 0.0, 0.0;
@@ -210,11 +222,13 @@ Status LatController::Init(std::shared_ptr<DependencyInjector> injector,
    0.0, ((lr * cr - lf * cf) / i_z) / v, (l_f * c_f - l_r * c_r) / i_z,
    (-1.0 * (l_f^2 * c_f + l_r^2 * c_r) / i_z) / v;]
   */
-  matrix_a_(0, 1) = 1.0;
-  matrix_a_(1, 2) = (cf_ + cr_) / mass_;
+  //先初始化速度无关项
+  matrix_a_(0, 1) = 1.0;                             //矩阵A第1行第2列
+  matrix_a_(1, 2) = (cf_ + cr_) / mass_;             //矩阵A第2行第3列
   matrix_a_(2, 3) = 1.0;
   matrix_a_(3, 2) = (lf_ * cf_ - lr_ * cr_) / iz_;
 
+  //初始化速度相关项
   matrix_a_coeff_ = Matrix::Zero(matrix_size, matrix_size);
   matrix_a_coeff_(1, 1) = -(cf_ + cr_) / mass_;
   matrix_a_coeff_(1, 3) = (lr_ * cr_ - lf_ * cf_) / mass_;
@@ -224,17 +238,19 @@ Status LatController::Init(std::shared_ptr<DependencyInjector> injector,
   /*
   b = [0.0, c_f / m, 0.0, l_f * c_f / i_z]^T
   */
+  //初始化B矩阵
   matrix_b_ = Matrix::Zero(basic_state_size_, 1);
   matrix_bd_ = Matrix::Zero(basic_state_size_, 1);
   matrix_bdc_ = Matrix::Zero(matrix_size, 1);
+  //矩阵B
   matrix_b_(1, 0) = cf_ / mass_;
   matrix_b_(3, 0) = lf_ * cf_ / iz_;
-  matrix_bd_ = matrix_b_ * ts_;
-
-  matrix_state_ = Matrix::Zero(matrix_size, 1);
-  matrix_k_ = Matrix::Zero(1, matrix_size);
-  matrix_r_ = Matrix::Identity(1, 1);
-  matrix_q_ = Matrix::Zero(matrix_size, matrix_size);
+  matrix_bd_ = matrix_b_ * ts_; //（简单的线性化？）
+  //LQR权重矩阵
+  matrix_state_ = Matrix::Zero(matrix_size, 1); //状态量 lateral error，error rate；heading error，error rate
+  matrix_k_ = Matrix::Zero(1, matrix_size);     //K反馈矩阵（1x4），LQR计算结果
+  matrix_r_ = Matrix::Identity(1, 1);           //R（1x1），控制量作用权重
+  matrix_q_ = Matrix::Zero(matrix_size, matrix_size); //Q（4x4），状态量权重
 
   int q_param_size = control_conf_->lat_controller_conf().matrix_q_size();
   int reverse_q_param_size =
@@ -254,17 +270,19 @@ Status LatController::Init(std::shared_ptr<DependencyInjector> injector,
   }
 
   matrix_q_updated_ = matrix_q_;
-  InitializeFilters(control_conf_);
+  InitializeFilters(control_conf_);                                  //初始化滤波器 均值滤波 低通数字滤波
   auto &lat_controller_conf = control_conf_->lat_controller_conf();
-  LoadLatGainScheduler(lat_controller_conf);
-  LogInitParameters();
+  LoadLatGainScheduler(lat_controller_conf);                         //权重矩阵Q关联速度反比例增益，削弱1、3权重
+  LogInitParameters();                                               //初始化控制系统参数，通过函数4来实现
 
+  //滞后超前控制器
   enable_leadlag_ = control_conf_->lat_controller_conf()
                         .enable_reverse_leadlag_compensation();
   if (enable_leadlag_) {
     leadlag_controller_.Init(lat_controller_conf.reverse_leadlag_conf(), ts_);
   }
-
+  
+  //模型参考自适应控制器
   enable_mrac_ =
       control_conf_->lat_controller_conf().enable_steer_mrac_control();
   if (enable_mrac_) {
@@ -287,19 +305,19 @@ void LatController::CloseLogFile() {
 void LatController::LoadLatGainScheduler(
     const LatControllerConf &lat_controller_conf) {
   const auto &lat_err_gain_scheduler =
-      lat_controller_conf.lat_err_gain_scheduler();
+      lat_controller_conf.lat_err_gain_scheduler();                        //不同速度下的横向偏差增益
   const auto &heading_err_gain_scheduler =
-      lat_controller_conf.heading_err_gain_scheduler();
+      lat_controller_conf.heading_err_gain_scheduler();                    //不同速度下的航向偏差增益
   AINFO << "Lateral control gain scheduler loaded";
-  Interpolation1D::DataType xy1, xy2;
+  Interpolation1D::DataType xy1, xy2;                                      //加载标定表
   for (const auto &scheduler : lat_err_gain_scheduler.scheduler()) {
-    xy1.push_back(std::make_pair(scheduler.speed(), scheduler.ratio()));
+    xy1.push_back(std::make_pair(scheduler.speed(), scheduler.ratio()));   //横向偏差标定表
   }
   for (const auto &scheduler : heading_err_gain_scheduler.scheduler()) {
-    xy2.push_back(std::make_pair(scheduler.speed(), scheduler.ratio()));
+    xy2.push_back(std::make_pair(scheduler.speed(), scheduler.ratio()));   //航向偏差标定表
   }
 
-  lat_err_interpolation_.reset(new Interpolation1D);
+  lat_err_interpolation_.reset(new Interpolation1D);                       //一维线形插值
   ACHECK(lat_err_interpolation_->Init(xy1))
       << "Fail to load lateral error gain scheduler";
 
@@ -320,7 +338,8 @@ Status LatController::ComputeControlCommand(
   auto vehicle_state = injector_->vehicle_state();
 
   auto target_tracking_trajectory = *planning_published_trajectory;
-
+  
+  //导航模式（暂不考虑）
   if (FLAGS_use_navigation_mode &&
       FLAGS_enable_navigation_mode_position_update) {
     auto time_stamp_diff =
@@ -391,6 +410,7 @@ Status LatController::ComputeControlCommand(
 
   // Transform the coordinate of the planning trajectory from the center of the
   // rear-axis to the center of mass, if conditions matched
+  // 低速时使用几何中心点（比如倒车时选择后轴中心，前进时选择几何中心，路测时反馈比较好）
   if (((FLAGS_trajectory_transform_to_com_reverse &&
         vehicle_state->gear() == canbus::Chassis::GEAR_REVERSE) ||
        (FLAGS_trajectory_transform_to_com_drive &&
@@ -402,6 +422,7 @@ Status LatController::ComputeControlCommand(
   // Re-build the vehicle dynamic models at reverse driving (in particular,
   // replace the lateral translational motion dynamics with the corresponding
   // kinematic models)
+  // 倒车动力学模型 对矩阵A个别项进行了修改
   if (vehicle_state->gear() == canbus::Chassis::GEAR_REVERSE) {
     /*
     A matrix (Gear Reverse)
@@ -445,25 +466,25 @@ Status LatController::ComputeControlCommand(
   matrix_b_(3, 0) = lf_ * cf_ / iz_;
   matrix_bd_ = matrix_b_ * ts_;
 
-  UpdateDrivingOrientation();
+  UpdateDrivingOrientation();            //当前车辆驾驶方向判断 更新状态
 
   SimpleLateralDebug *debug = cmd->mutable_debug()->mutable_simple_lat_debug();
   debug->Clear();
 
   // Update state = [Lateral Error, Lateral Error Rate, Heading Error, Heading
   // Error Rate, preview lateral error1 , preview lateral error2, ...]
-  UpdateState(debug);
+  UpdateState(debug);                   //更新当前状态量偏差等 保存至debug方便后续调试
 
-  UpdateMatrix();
+  UpdateMatrix();                       //对连续的状态空间方程作离散化处理
 
   // Compound discrete matrix with road preview model
-  UpdateMatrixCompound();
+  UpdateMatrixCompound();               //更新matrix_adc_ matrix_bdc_ ,AB矩阵成型
 
   // Adjust matrix_q_updated when in reverse gear
-  int q_param_size = control_conf_->lat_controller_conf().matrix_q_size();
+  int q_param_size = control_conf_->lat_controller_conf().matrix_q_size(); //读取q矩阵参数大小
   int reverse_q_param_size =
       control_conf_->lat_controller_conf().reverse_matrix_q_size();
-  if (injector_->vehicle_state()->gear() == canbus::Chassis::GEAR_REVERSE) {
+  if (injector_->vehicle_state()->gear() == canbus::Chassis::GEAR_REVERSE) { //赋值q矩阵
     for (int i = 0; i < reverse_q_param_size; ++i) {
       matrix_q_(i, i) =
           control_conf_->lat_controller_conf().reverse_matrix_q(i);
@@ -475,16 +496,16 @@ Status LatController::ComputeControlCommand(
   }
 
   // Add gain scheduler for higher speed steering
-  if (FLAGS_enable_gain_scheduler) {
-    matrix_q_updated_(0, 0) =
+  if (FLAGS_enable_gain_scheduler) {              //根据车辆速度对横向偏差及航向偏差增益进行插值
+    matrix_q_updated_(0, 0) =                     //高速时对应降低相关权重，避免猛打方向
         matrix_q_(0, 0) * lat_err_interpolation_->Interpolate(
                               std::fabs(vehicle_state->linear_velocity()));
     matrix_q_updated_(2, 2) =
         matrix_q_(2, 2) * heading_err_interpolation_->Interpolate(
                               std::fabs(vehicle_state->linear_velocity()));
-    common::math::SolveLQRProblem(matrix_adc_, matrix_bdc_, matrix_q_updated_,
-                                  matrix_r_, lqr_eps_, lqr_max_iteration_,
-                                  &matrix_k_);
+    common::math::SolveLQRProblem(matrix_adc_, matrix_bdc_, matrix_q_updated_,  //lqr求解器
+                                  matrix_r_, lqr_eps_, lqr_max_iteration_,      //输入为A B Q R eps iteration
+                                  &matrix_k_);                                  //输出为 矩阵K 1*4 状态量权重系数
   } else {
     common::math::SolveLQRProblem(matrix_adc_, matrix_bdc_, matrix_q_,
                                   matrix_r_, lqr_eps_, lqr_max_iteration_,
@@ -494,14 +515,14 @@ Status LatController::ComputeControlCommand(
   // feedback = - K * state
   // Convert vehicle steer angle from rad to degree and then to steer degree
   // then to 100% ratio
-  const double steer_angle_feedback = -(matrix_k_ * matrix_state_)(0, 0) * 180 /
+  const double steer_angle_feedback = -(matrix_k_ * matrix_state_)(0, 0) * 180 /  //侧偏刚度单位是N/弧度
                                       M_PI * steer_ratio_ /
-                                      steer_single_direction_max_degree_ * 100;
+                                      steer_single_direction_max_degree_ * 100;   //把方向盘转角从弧度转换成角度
 
-  const double steer_angle_feedforward = ComputeFeedForward(debug->curvature());
+  const double steer_angle_feedforward = ComputeFeedForward(debug->curvature());  //前馈控制求解
 
   double steer_angle = 0.0;
-  double steer_angle_feedback_augment = 0.0;
+  double steer_angle_feedback_augment = 0.0;         //控制器滞后超前补偿值
   // Augment the feedback control on lateral error at the desired speed domain
   if (enable_leadlag_) {
     if (FLAGS_enable_feedback_augment_on_high_speed ||
@@ -520,7 +541,7 @@ Status LatController::ComputeControlCommand(
     }
   }
   steer_angle = steer_angle_feedback + steer_angle_feedforward +
-                steer_angle_feedback_augment;
+                steer_angle_feedback_augment;        //控制计算结果
 
   // Compute the steering command limit with the given maximum lateral
   // acceleration
@@ -724,7 +745,7 @@ void LatController::UpdateMatrix() {
   matrix_a_(3, 1) = matrix_a_coeff_(3, 1) / v;
   matrix_a_(3, 3) = matrix_a_coeff_(3, 3) / v;
   Matrix matrix_i = Matrix::Identity(matrix_a_.cols(), matrix_a_.cols());
-  matrix_ad_ = (matrix_i - ts_ * 0.5 * matrix_a_).inverse() *
+  matrix_ad_ = (matrix_i - ts_ * 0.5 * matrix_a_).inverse() *                 //双线性变换，主要是使频域不至于发生重叠
                (matrix_i + ts_ * 0.5 * matrix_a_);
 }
 
@@ -749,12 +770,12 @@ double LatController::ComputeFeedForward(double ref_curvature) const {
   // from rad to %
   const double v = injector_->vehicle_state()->linear_velocity();
   double steer_angle_feedforwardterm;
-  if (injector_->vehicle_state()->gear() == canbus::Chassis::GEAR_REVERSE) {
+  if (injector_->vehicle_state()->gear() == canbus::Chassis::GEAR_REVERSE) { //倒车时前馈使用?模型
     steer_angle_feedforwardterm = wheelbase_ * ref_curvature * 180 / M_PI *
                                   steer_ratio_ /
                                   steer_single_direction_max_degree_ * 100;
   } else {
-    steer_angle_feedforwardterm =
+    steer_angle_feedforwardterm =       //前进时使用动力学模型公式
         (wheelbase_ * ref_curvature + kv * v * v * ref_curvature -
          matrix_k_(0, 2) *
              (lr_ * ref_curvature -
@@ -772,15 +793,15 @@ void LatController::ComputeLateralErrors(
   TrajectoryPoint target_point;
 
   if (FLAGS_query_time_nearest_point_only) {
-    target_point = trajectory_analyzer.QueryNearestPointByAbsoluteTime(
-        Clock::NowInSeconds() + query_relative_time_);
+    target_point = trajectory_analyzer.QueryNearestPointByAbsoluteTime(   //查找时间匹配点
+        Clock::NowInSeconds() + query_relative_time_);//为了弥补控制指令到底盘响应的时间间隔
   } else {
     if (FLAGS_use_navigation_mode &&
         !FLAGS_enable_navigation_mode_position_update) {
       target_point = trajectory_analyzer.QueryNearestPointByAbsoluteTime(
           Clock::NowInSeconds() + query_relative_time_);
     } else {
-      target_point = trajectory_analyzer.QueryNearestPointByPosition(x, y);
+      target_point = trajectory_analyzer.QueryNearestPointByPosition(x, y); //查找距离匹配点
     }
   }
   const double dx = x - target_point.path_point().x();
