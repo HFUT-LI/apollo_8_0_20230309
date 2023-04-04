@@ -164,7 +164,7 @@ class ReferenceLine {
   bool IsBlockRoad(const common::math::Box2d& box2d, double gap) const;
 
   /**
-   * @brief check if any part of the box has overlap with the road.
+   * @brief check if any part of the box has overlap with the road. 重叠
    */
   bool HasOverlap(const common::math::Box2d& box) const;
 
@@ -203,7 +203,7 @@ class ReferenceLine {
    */
   static ReferencePoint Interpolate(const ReferencePoint& p0, const double s0,
                                     const ReferencePoint& p1, const double s1,
-                                    const double s);
+                                    const double s); //插值
   ReferencePoint InterpolateWithMatchedIndex(
       const ReferencePoint& p0, const double s0, const ReferencePoint& p1,
       const double s1, const hdmap::InterpolatedIndex& index) const;
@@ -220,14 +220,14 @@ class ReferenceLine {
     SpeedLimit() = default;
     SpeedLimit(double _start_s, double _end_s, double _speed_limit)
         : start_s(_start_s), end_s(_end_s), speed_limit(_speed_limit) {}
-  };
+  }; // piecewise limit velocity
   /**
    * This speed limit overrides the lane speed limit
    **/
-  std::vector<SpeedLimit> speed_limit_;
-  std::vector<ReferencePoint> reference_points_;
-  hdmap::Path map_path_;
-  uint32_t priority_ = 0;
+  std::vector<SpeedLimit> speed_limit_; //分段限速
+  std::vector<ReferencePoint> reference_points_; //参考点
+  hdmap::Path map_path_; //reference line in the map
+  uint32_t priority_ = 0; //优先级
 };
 
 }  // namespace planning

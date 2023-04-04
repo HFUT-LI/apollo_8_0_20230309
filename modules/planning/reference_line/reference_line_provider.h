@@ -153,7 +153,7 @@ class ReferenceLineProvider {
       hdmap::LaneWaypoint* waypoint);
 
   bool Shrink(const common::SLPoint& sl, ReferenceLine* ref,
-              hdmap::RouteSegments* segments);
+              hdmap::RouteSegments* segments); //收缩，减少
 
  private:
   bool is_initialized_ = false;
