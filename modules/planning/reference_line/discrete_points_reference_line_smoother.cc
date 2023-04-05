@@ -143,7 +143,7 @@ bool DiscretePointsReferenceLineSmoother::FemPosSmooth(
 
   // box contraints on pos are used in fem pos smoother, thus shrink the
   // bounds by 1.0 / sqrt(2.0)
-  std::vector<double> box_bounds = bounds;
+  std::vector<double> box_bounds = bounds; //裕度收缩
   const double box_ratio = 1.0 / std::sqrt(2.0);
   for (auto& bound : box_bounds) {
     bound *= box_ratio;
@@ -151,7 +151,7 @@ bool DiscretePointsReferenceLineSmoother::FemPosSmooth(
 
   std::vector<double> opt_x;
   std::vector<double> opt_y;
-  bool status = smoother.Solve(raw_point2d, box_bounds, &opt_x, &opt_y);
+  bool status = smoother.Solve(raw_point2d, box_bounds, &opt_x, &opt_y); //问题求解
 
   if (!status) {
     AERROR << "Fem Pos reference line smoothing failed";

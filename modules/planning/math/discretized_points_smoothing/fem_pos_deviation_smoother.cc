@@ -38,14 +38,14 @@ bool FemPosDeviationSmoother::Solve(
     const std::vector<std::pair<double, double>>& raw_point2d,
     const std::vector<double>& bounds, std::vector<double>* opt_x,
     std::vector<double>* opt_y) {
-  if (config_.apply_curvature_constraint()) {
+  if (config_.apply_curvature_constraint()) { //考虑曲率约束
     if (config_.use_sqp()) {
-      return SqpWithOsqp(raw_point2d, bounds, opt_x, opt_y);
+      return SqpWithOsqp(raw_point2d, bounds, opt_x, opt_y); //线性求解
     } else {
-      return NlpWithIpopt(raw_point2d, bounds, opt_x, opt_y);
+      return NlpWithIpopt(raw_point2d, bounds, opt_x, opt_y); //非线性求解
     }
-  } else {
-    return QpWithOsqp(raw_point2d, bounds, opt_x, opt_y);
+  } else { // 不考虑曲率约束
+    return QpWithOsqp(raw_point2d, bounds, opt_x, opt_y); //线性求解
   }
   return true;
 }

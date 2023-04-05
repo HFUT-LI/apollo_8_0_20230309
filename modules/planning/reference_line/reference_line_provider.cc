@@ -924,9 +924,9 @@ bool ReferenceLineProvider::SmoothReferenceLine(
   }
   // generate anchor points:
   std::vector<AnchorPoint> anchor_points;
-  GetAnchorPoints(raw_reference_line, &anchor_points);
+  GetAnchorPoints(raw_reference_line, &anchor_points); //设置中间点
   smoother_->SetAnchorPoints(anchor_points);
-  if (!smoother_->Smooth(raw_reference_line, reference_line)) {
+  if (!smoother_->Smooth(raw_reference_line, reference_line)) { //平滑算法
     AERROR << "Failed to smooth reference line with anchor points";
     return false;
   }
