@@ -84,24 +84,45 @@ class PiecewiseJerkSpeedNonlinearIpoptInterface : public Ipopt::TNLP {
   /** Method to return some info about the nlp */
   bool get_nlp_info(int &n, int &m, int &nnz_jac_g, int &nnz_h_lag,
                     IndexStyleEnum &index_style) override;
+                    // 定义问题规模
+                    // 优化变量数量 n
+                    // 约束函数数量 m
+                    // 雅可比矩阵非0项数量 nnz_jac_g
+                    // 黑塞矩阵非0项数量 nnz_h_lag
 
   /** Method to return the bounds for my problem */
   bool get_bounds_info(int n, double *x_l, double *x_u, int m, double *g_l,
                        double *g_u) override;
+                    // 定义约束边界
+                    // 自变量下边界 x_l
+                    // 自变量上边界 x_u
+                    // 约束函数上边界 g_l
+                    // 约束函数上边界 g_u
 
   /** Method to return the starting point for the algorithm */
   bool get_starting_point(int n, bool init_x, double *x, bool init_z,
                           double *z_L, double *z_U, int m, bool init_lambda,
                           double *lambda) override;
+                    // 定义初值
+                    // 定义优化变量的初始值 init_x
 
   /** Method to return the objective value */
   bool eval_f(int n, const double *x, bool new_x, double &obj_value) override;
+  // 求解目标函数
+  // 变量值 x
+  // 目标函数值 obj_value
 
   /** Method to return the gradient of the objective */
   bool eval_grad_f(int n, const double *x, bool new_x, double *grad_f) override;
+  // 求解梯度
+  // 变量值 x
+  // 梯度值 grad_f
 
   /** Method to return the constraint residuals */
   bool eval_g(int n, const double *x, bool new_x, int m, double *g) override;
+  // 求解约束函数
+  // 变量值 x
+  // 约束函数值 g
 
   /** Method to return:
    *   1) The structure of the jacobian (if "values" is nullptr)
@@ -109,6 +130,10 @@ class PiecewiseJerkSpeedNonlinearIpoptInterface : public Ipopt::TNLP {
    */
   bool eval_jac_g(int n, const double *x, bool new_x, int m, int nele_jac,
                   int *iRow, int *jCol, double *values) override;
+                  // 求解约束雅可比矩阵
+                  // 变量值 x
+                  // 雅可比矩阵非0元素数量 nele_jac
+                  // 雅可比矩阵值 values
 
   /** Method to return:
    *   1) The structure of the hessian of the lagrangian (if "values" is
@@ -118,6 +143,11 @@ class PiecewiseJerkSpeedNonlinearIpoptInterface : public Ipopt::TNLP {
   bool eval_h(int n, const double *x, bool new_x, double obj_factor, int m,
               const double *lambda, bool new_lambda, int nele_hess, int *iRow,
               int *jCol, double *values) override;
+              // 目标函数黑塞矩阵
+              // 变量值 x
+              // 拉格朗日乘数 lambda
+              // 黑塞矩阵值 values
+              // 目标函数因数 obj_factor
 
   /** @name Solution Methods */
   /** This method is called when the algorithm is complete so the TNLP can
@@ -127,6 +157,9 @@ class PiecewiseJerkSpeedNonlinearIpoptInterface : public Ipopt::TNLP {
                          const double *g, const double *lambda,
                          double obj_value, const Ipopt::IpoptData *ip_data,
                          Ipopt::IpoptCalculatedQuantities *ip_cq) override;
+                         // 获得优化结果
+                         // 目标函数取得最小值时的优化量 x
+                         // 目标函数最小值 obj_value
 
  private:
   int to_hash_key(const int i, const int j) const;
