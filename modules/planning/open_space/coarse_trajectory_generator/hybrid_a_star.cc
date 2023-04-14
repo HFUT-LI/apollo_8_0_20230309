@@ -767,11 +767,12 @@ bool HybridAStar::Plan(
     return false;
   }
   double map_time = Clock::NowInSeconds();
+  // 生成2d节点启发代价表
   grid_a_star_heuristic_generator_->GenerateDpMap(ex, ey, XYbounds_,
                                                   obstacles_linesegments_vec_);
   ADEBUG << "map time " << Clock::NowInSeconds() - map_time;
   // load open set, pq
-  open_set_.emplace(start_node_->GetIndex(), start_node_);
+  open_set_.emplace(start_node_->GetIndex(), start_node_); // 起点加入open set
   open_pq_.emplace(start_node_->GetIndex(), start_node_->GetCost());
   // Hybrid A* begins
   size_t explored_node_num = 0;
@@ -787,7 +788,7 @@ bool HybridAStar::Plan(
     // configuration to the end configuration without collision. if so, search
     // ends.
     const double rs_start_time = Clock::NowInSeconds();
-    if (AnalyticExpansion(current_node)) {
+    if (AnalyticExpansion(current_node)) { // 检测是否能解析拓展
       break;
     }
     const double rs_end_time = Clock::NowInSeconds();
