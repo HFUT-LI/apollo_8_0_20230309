@@ -56,6 +56,7 @@ bool GridSearch::CheckConstraints(std::shared_ptr<Node2d> node) {
   return true;
 }
 
+// 节点扩展
 std::vector<std::shared_ptr<Node2d>> GridSearch::GenerateNextNodes(
     std::shared_ptr<Node2d> current_node) {
   double current_node_x = current_node->GetGridX();
@@ -162,6 +163,7 @@ bool GridSearch::GenerateAStarPath(
   return true;
 }
 
+// BFS遍历最短路
 bool GridSearch::GenerateDpMap(
     const double ex, const double ey, const std::vector<double>& XYbounds,
     const std::vector<std::vector<common::math::LineSegment2d>>&

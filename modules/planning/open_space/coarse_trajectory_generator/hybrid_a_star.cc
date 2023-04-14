@@ -261,6 +261,8 @@ void HybridAStar::CalculateNodeCost(std::shared_ptr<Node3d> current_node,
   next_node->SetHeuCost(optimal_path_cost);
 }
 
+// 移动代价G 
+// 节点移动代价包括两个节点之间前进或后退距离的代价、前轮转向角度的代价，两个节点之间存在换挡还有换挡的代价
 double HybridAStar::TrajCost(std::shared_ptr<Node3d> current_node,
                              std::shared_ptr<Node3d> next_node) {
   // evaluate cost on the trajectory and add current cost
