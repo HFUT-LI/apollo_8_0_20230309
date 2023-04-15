@@ -133,9 +133,9 @@ class HybridAStar {
   };
   std::priority_queue<std::pair<std::string, double>,
                       std::vector<std::pair<std::string, double>>, cmp>
-      open_pq_;
-  std::unordered_map<std::string, std::shared_ptr<Node3d>> open_set_;
-  std::unordered_map<std::string, std::shared_ptr<Node3d>> close_set_;
+      open_pq_; // 队列根据节点cost由小到达的顺序排列
+  std::unordered_map<std::string, std::shared_ptr<Node3d>> open_set_; // 记录了所有待遍历和遍历过的节点
+  std::unordered_map<std::string, std::shared_ptr<Node3d>> close_set_; // 记录了所有已经遍历过的节点
   std::unique_ptr<ReedShepp> reed_shepp_generator_;
   std::unique_ptr<GridSearch> grid_a_star_heuristic_generator_;
 };
