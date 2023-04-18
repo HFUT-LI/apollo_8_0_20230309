@@ -44,7 +44,7 @@ bool PlanningComponent::Init() {
   if (FLAGS_use_navigation_mode) {
     planning_base_ = std::make_unique<NaviPlanning>(injector_);
   } else {
-    planning_base_ = std::make_unique<OnLanePlanning>(injector_);
+    planning_base_ = std::make_unique<OnLanePlanning>(injector_); // OnLanePlanning实例化
   }
 
   ACHECK(ComponentBase::GetProtoConfig(&config_))
@@ -59,8 +59,10 @@ bool PlanningComponent::Init() {
     }
   }
 
-  planning_base_->Init(config_);
+  planning_base_->Init(config_); //调用初始化
+  //以上为实例化规划模块
 
+  // 以下为输入通道的建立
   routing_reader_ = node_->CreateReader<RoutingResponse>(
       config_.topic_config().routing_response_topic(),
       [this](const std::shared_ptr<RoutingResponse>& routing) {
@@ -101,8 +103,9 @@ bool PlanningComponent::Init() {
           ADEBUG << "Received relative map data: run relative map callback.";
           std::lock_guard<std::mutex> lock(mutex_);
           relative_map_.CopyFrom(*map_message);
-        });
+        }); 
   }
+  // 以下为输出通道的建立
   planning_writer_ = node_->CreateWriter<ADCTrajectory>(
       config_.topic_config().planning_trajectory_topic());
 
@@ -123,6 +126,9 @@ bool PlanningComponent::Proc(
         localization_estimate) {
   ACHECK(prediction_obstacles != nullptr);
 
+  /* 工作前检查，包括重新进行路由的检查，如果需要会发送rerouting消息；
+     输入数据融合与检查，数据来源包括外部传参和内部缓存数据，
+     一并汇总到LocalView结构体中，实现融合，并最终会保存到Frame对象中 */
   // check and process possible rerouting request
   CheckRerouting();
 
@@ -186,7 +192,7 @@ bool PlanningComponent::Proc(
   }
 
   ADCTrajectory adc_trajectory_pb;
-  planning_base_->RunOnce(local_view_, &adc_trajectory_pb);
+  planning_base_->RunOnce(local_view_, &adc_trajectory_pb); // 执行规划任务
   auto start_time = adc_trajectory_pb.header().timestamp_sec();
   common::util::FillHeader(node_->Name(), &adc_trajectory_pb);
 
@@ -195,11 +201,12 @@ bool PlanningComponent::Proc(
   for (auto& p : *adc_trajectory_pb.mutable_trajectory_point()) {
     p.set_relative_time(p.relative_time() + dt);
   }
+  // 发布规划结果
   planning_writer_->Write(adc_trajectory_pb);
 
   // record in history
   auto* history = injector_->history();
-  history->Add(adc_trajectory_pb);
+  history->Add(adc_trajectory_pb); //更新历史缓存
 
   return true;
 }

@@ -114,7 +114,7 @@ Status OnLanePlanning::Init(const PlanningConfig& config) {
                   "planning config error: " + config_.DebugString());
   }
 
-  PlanningBase::Init(config_);
+  PlanningBase::Init(config_); // 调用父类初始化
 
   planner_dispatcher_->Init();
 

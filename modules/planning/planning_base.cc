@@ -34,8 +34,8 @@ PlanningBase::PlanningBase(const std::shared_ptr<DependencyInjector>& injector)
 PlanningBase::~PlanningBase() {}
 
 Status PlanningBase::Init(const PlanningConfig& config) {
-  injector_->planning_context()->Init();
-  TaskFactory::Init(config, injector_);
+  injector_->planning_context()->Init(); //注入器planning上下文初始化
+  TaskFactory::Init(config, injector_); //任务工厂初始化
   return Status::OK();
 }
 
