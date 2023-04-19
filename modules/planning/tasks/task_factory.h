@@ -30,8 +30,9 @@
 namespace apollo {
 namespace planning {
 
-class TaskFactory {
+class TaskFactory { // 用于实现工厂模式
  public:
+  // task的创建由Init()静态函数完成，主要实现决策器decider、优化器optimizer等对象的创建与管理
   static void Init(const PlanningConfig &config,
                    const std::shared_ptr<DependencyInjector> &injector);
   static std::unique_ptr<Task> CreateTask(
@@ -48,7 +49,7 @@ class TaskFactory {
           Task *(*)(const TaskConfig &config,
                     const std::shared_ptr<DependencyInjector> &injector),
           std::hash<int>>>
-      task_factory_;
+      task_factory_; // 用于储存各类task
   static std::unordered_map<TaskConfig::TaskType, TaskConfig, std::hash<int>>
       default_task_configs_;
 };

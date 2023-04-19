@@ -65,10 +65,12 @@ apollo::common::util::Factory<
 std::unordered_map<TaskConfig::TaskType, TaskConfig, std::hash<int>>
     TaskFactory::default_task_configs_;
 
+// task的创建由Init()静态函数完成，主要实现决策器decider、优化器optimizer等对象的创建与管理
 void TaskFactory::Init(const PlanningConfig& config,
                        const std::shared_ptr<DependencyInjector>& injector) {
   ///////////////////////////
   // deciders
+  // TaskConfig定义在planning_config.proto
   task_factory_.Register(
       TaskConfig::CREEP_DECIDER,
       [](const TaskConfig& config,
