@@ -40,7 +40,7 @@ namespace planning {
 class OnLanePlanning : public PlanningBase {
  public:
   explicit OnLanePlanning(const std::shared_ptr<DependencyInjector>& injector)
-      : PlanningBase(injector) { // 调用父类
+      : PlanningBase(injector) { // 调用父类实例化过程
     planner_dispatcher_ = std::make_unique<OnLanePlannerDispatcher>(); //创建规划器分配器
   }
   virtual ~OnLanePlanning();

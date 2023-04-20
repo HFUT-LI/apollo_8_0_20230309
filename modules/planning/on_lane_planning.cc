@@ -116,7 +116,7 @@ Status OnLanePlanning::Init(const PlanningConfig& config) {
 
   PlanningBase::Init(config_); // 调用父类初始化
 
-  planner_dispatcher_->Init();
+  planner_dispatcher_->Init(); // 规划器分配器初始化
 
   ACHECK(apollo::cyber::common::GetProtoFromFile(
       FLAGS_traffic_rule_config_filename, &traffic_rule_configs_))
@@ -139,7 +139,7 @@ Status OnLanePlanning::Init(const PlanningConfig& config) {
   reference_line_provider_->Start();
 
   // dispatch planner
-  planner_ = planner_dispatcher_->DispatchPlanner(config_, injector_);
+  planner_ = planner_dispatcher_->DispatchPlanner(config_, injector_); // 规划器的分配
   if (!planner_) {
     return Status(
         ErrorCode::PLANNING_ERROR,

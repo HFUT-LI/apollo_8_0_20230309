@@ -40,7 +40,7 @@ class PlannerDispatcher {
   virtual ~PlannerDispatcher() = default;
 
   virtual common::Status Init() {
-    RegisterPlanners();
+    RegisterPlanners(); // 在规划器工厂中实现规划器的注册
     return common::Status::OK();
   }
 

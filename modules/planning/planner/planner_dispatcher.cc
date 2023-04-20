@@ -28,6 +28,10 @@ namespace apollo {
 namespace planning {
 
 void PlannerDispatcher::RegisterPlanners() {
+  // 在规划器工厂中实现规划器的注册
+  // 支持的规划器包括RTKReplayPlanner、PublicRoadPlanner、LatticePlanner、NaviPlanner
+  // 此处只实现初始化，不负责分配调用
+  // 该过程会调用不同规划器的构造函数，实现实例化，最终会调用Planner类的构造函数
   planner_factory_.Register(
       PlannerType::RTK,
       [](const std::shared_ptr<DependencyInjector>& injector) -> Planner* {
